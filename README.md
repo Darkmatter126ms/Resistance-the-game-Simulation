@@ -68,7 +68,10 @@ Timers are computed client-side against a per-phase duration that scales with pl
 | Players | Proposal timer | Vote timer |
 |---------|---------------|------------|
 | 5 | 2:30 | 1:00 |
+| 6 | 3:00 | 1:15 |
 | 7 | 3:30 | 1:30 |
+| 8 | 4:00 | 1:30 |
+| 9 | 4:30 | 2:00 |
 | 10 | 5:00 | 2:00 |
 
 ---
