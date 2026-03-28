@@ -4,7 +4,7 @@ A real-time multiplayer game engine built from scratch in Python. The interestin
 
 ---
 
-## Why this project
+## Project Motivation
 
 Most multiplayer game repos are thin wrappers around a game loop. This one treats correctness as a first-class constraint.
 
@@ -73,9 +73,9 @@ Timers are computed client-side against a per-phase duration that scales with pl
 
 ---
 
-## Stack
+## Tech Stack
 
-- **Python 3.12**, Flask, Flask-SocketIO
+- **Python**, Flask, Flask-SocketIO
 - **gevent** for async I/O and WebSocket handling
 - **Redis** for optional horizontal scaling via pub/sub
 - Vanilla JS frontend, no client-side framework
@@ -160,6 +160,8 @@ def test_full_loop(n=7):
 
 ---
 
-## License
+## Contributor
 
-MIT
+| Name | Email | Website |
+|---------|---------------|------------|
+| Allen Lu Zhao Quan | ALLE0002@e.ntu.edu.sg | allenlu.vercel.app |
