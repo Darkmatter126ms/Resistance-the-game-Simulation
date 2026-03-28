@@ -1,0 +1,1610 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Avalon — In Game</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+  <style>
+    /* ── Role Peek Button ────────────────────────────────────────────── */
+    .role-peek-btn {
+      position: fixed;
+      bottom: 1.25rem;
+      right: 1.25rem;
+      z-index: 200;
+      padding: 0.55rem 1rem;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text);
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      box-shadow: var(--shadow);
+      transition: border-color 0.2s, background 0.2s;
+    }
+    .role-peek-btn:hover { border-color: var(--gold-dim); background: var(--bg-hover); }
+    .role-peek-btn.hidden { display: none !important; }
+
+    /* ── Role Peek Overlay ───────────────────────────────────────────── */
+    .role-peek-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 300;
+      background: rgba(0,0,0,0.6);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1.5rem;
+    }
+    .role-peek-overlay.hidden { display: none !important; }
+
+    .role-peek-panel {
+      background: var(--bg-panel);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 1.5rem;
+      width: 100%;
+      max-width: 420px;
+      max-height: 85vh;
+      overflow-y: auto;
+      box-shadow: var(--shadow);
+    }
+
+    .role-peek-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 1rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .role-peek-close {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      font-size: 1rem;
+      cursor: pointer;
+      padding: 0.2rem 0.4rem;
+      border-radius: var(--radius);
+      transition: color 0.2s;
+    }
+    .role-peek-close:hover { color: var(--text); }
+  </style>
+</head>
+<body>
+  <!-- ── Persistent leader bar — visible during all active game phases ──────── -->
+  <div id="leader-bar" class="leader-bar hidden">
+    <span class="leader-bar-crown">👑</span>
+    <span id="leader-bar-text">—</span>
+    <span class="leader-bar-sub" id="leader-bar-sub"></span>
+    <span class="leader-bar-divider" id="leader-bar-divider">·</span>
+    <span class="leader-bar-next" id="leader-bar-next"></span>
+  </div>
+
+  <div class="page" id="app">
+
+    <!-- ══════════════════════════════════════════════════════════════════
+         PREGAME  (between games — players stay, host restarts)
+    ══════════════════════════════════════════════════════════════════════ -->
+    <div id="phase-pregame" class="card hidden">
+      <div class="phase-header">
+        <div>
+          <div class="logo" style="font-size:1.4rem;margin-bottom:0;">⚔ Avalon</div>
+          <div class="text-muted" style="font-size:0.8rem;">Game over, ready for another?</div>
+        </div>
+        <div class="phase-label" id="pregame-player-count">0 / 11</div>
+      </div>
+      <div class="room-code-display" id="pregame-room-code">——</div>
+      <div class="room-code-hint">Share this code so new players can join</div>
+      <h3>Players</h3>
+      <div class="player-list mb-2" id="pregame-player-list"></div>
+      <div id="pregame-status" class="text-muted text-center mb-2" style="font-size:0.85rem;">
+        Waiting for host to start the next game…
+      </div>
+      <button class="btn btn-primary btn-full hidden" id="btn-pregame-start">
+        Start Next Game
+      </button>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════════════════
+         MODERATOR CONFIG  (host picks active vs passive + nominates, 6+ players)
+    ══════════════════════════════════════════════════════════════════════ -->
+    <div id="phase-moderator_config" class="card card-wide hidden">
+      <div class="text-center mb-2" style="font-size:2rem;">⚙️</div>
+      <h2 class="text-center">Moderator Setup</h2>
+
+      <!-- Host panel -->
+      <div id="mod-config-host-panel" class="hidden">
+        <p class="text-muted text-center mb-2" style="font-size:0.9rem;">
+          Choose whether to include a moderator and what kind.
+        </p>
+
+        <!-- Mode selection -->
+        <div class="player-list mb-2" id="mod-config-mode-list"></div>
+
+        <!-- Moderator nominee (shown after mode is selected) -->
+        <div id="mod-config-nominee-section" class="hidden">
+          <h3 class="mt-2">Who is the moderator?</h3>
+          <div class="player-list mb-2" id="mod-config-nominee-list"></div>
+        </div>
+
+        <div class="knowledge-panel mb-2" id="mod-config-info" style="background:rgba(201,168,76,0.07); display:none;">
+          <h3 id="mod-config-info-title">—</h3>
+          <div class="text-muted" style="font-size:0.85rem;" id="mod-config-info-body">—</div>
+        </div>
+
+        <button class="btn btn-primary btn-full" id="btn-confirm-moderator" disabled>
+          Confirm &amp; Continue
+        </button>
+      </div>
+
+      <!-- Non-host waiting panel -->
+      <div id="mod-config-waiting-panel" class="hidden text-center">
+        <div class="text-muted mt-2">Host is configuring the moderator role…</div>
+        <div class="player-list mt-3" id="mod-config-player-list"></div>
+      </div>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════════════════
+         ROLE CONFIG  (host picks optional evil roles, 8+ active players)
+    ══════════════════════════════════════════════════════════════════════ -->
+    <div id="phase-role_config" class="card card-wide hidden">
+      <div class="text-center mb-2" style="font-size:2rem;">⚙️</div>
+      <h2 class="text-center">Optional Evil Roles</h2>
+
+      <!-- Host panel -->
+      <div id="role-config-host-panel" class="hidden">
+        <p class="text-muted text-center mb-2" style="font-size:0.9rem;">
+          Choose which optional Evil roles to include. Unchosen slots become plain
+          <strong>Minions of Mordred</strong>.
+        </p>
+        <div id="role-config-options" class="player-list mb-2"></div>
+        <div class="knowledge-panel mb-2" style="background:rgba(192,57,43,0.07);">
+          <h3>⚠ Heads up</h3>
+          <div class="text-muted" style="font-size:0.85rem;">
+            These roles are best for groups already familiar with the base game.
+            When in doubt, leave them out for your first few sessions.
+          </div>
+        </div>
+        <button class="btn btn-primary btn-full" id="btn-confirm-roles">
+          Confirm &amp; Deal Roles
+        </button>
+      </div>
+
+      <!-- Non-host waiting panel -->
+      <div id="role-config-waiting-panel" class="hidden text-center">
+        <div class="text-muted mt-2">Host is choosing the optional roles…</div>
+        <div class="player-list mt-3" id="role-config-player-list"></div>
+      </div>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════════════════
+         ROLE REVEAL
+    ══════════════════════════════════════════════════════════════════════ -->
+    <div id="phase-role_reveal" class="card hidden">
+      <h2 class="text-center">Your Role</h2>
+      <div id="role-card" class="role-card">
+        <div class="role-icon" id="role-icon">?</div>
+        <div class="role-name" id="role-name">—</div>
+        <div class="role-team" id="role-team">—</div>
+        <div class="role-desc" id="role-desc">—</div>
+      </div>
+
+      <!-- Night knowledge panel -->
+      <div id="knowledge-panel" class="knowledge-panel hidden">
+        <h3>🔎 You Can See</h3>
+        <div class="player-list" id="knowledge-list"></div>
+      </div>
+
+      <div class="text-center text-muted mb-2" id="ready-status" style="font-size:0.85rem;">
+        Waiting for others…
+      </div>
+      <button class="btn btn-primary btn-full" id="btn-ready">I'm Ready ✓</button>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════════════════
+         TEAM PROPOSAL
+    ══════════════════════════════════════════════════════════════════════ -->
+    <div id="phase-team_proposal" class="card card-wide hidden">
+      <div class="phase-header">
+        <div>
+          <div class="text-muted" style="font-size:0.75rem;text-transform:uppercase;letter-spacing:.08em;">Mission <span id="proposal-mission-num">1</span> of 5</div>
+          <h2 style="margin-bottom:0;">Select Team</h2>
+        </div>
+        <div class="phase-label" id="proposal-team-size-label">Pick 0</div>
+      </div>
+
+      <div id="proposal-mission-track" class="mission-track"></div>
+      <div class="rejection-meter" id="proposal-rejection-meter"></div>
+      <div class="timer-bar-wrap mb-2" id="proposal-timer-wrap">
+        <div class="timer-bar-track">
+          <div class="timer-bar-fill" id="proposal-timer-fill"></div>
+        </div>
+        <span class="timer-bar-label" id="proposal-timer-label">—</span>
+      </div>
+
+      <!-- Leader view -->
+      <div id="proposal-leader-panel">
+        <div class="leader-you-banner mb-2">
+          👑 You are the Leader: Select your team below.
+        </div>
+        <div class="text-muted mb-2" style="font-size:0.85rem;">
+          Select <strong id="proposal-need">0</strong> player(s) to send on this mission.
+        </div>
+        <div class="player-list" id="proposal-player-list"></div>
+        <div class="mt-2">
+          <button class="btn btn-primary btn-full" id="btn-propose" disabled>
+            Propose Team (0 / 0)
+          </button>
+        </div>
+      </div>
+
+      <!-- Waiting view (non-leader) -->
+      <div id="proposal-waiting-panel" class="hidden text-center">
+        <div class="text-muted mt-2">
+          Waiting for <strong id="proposal-leader-name">—</strong> to propose a team…
+        </div>
+        <div class="player-list mt-2" id="proposal-waiting-player-list"></div>
+      </div>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════════════════
+         TEAM VOTE
+    ══════════════════════════════════════════════════════════════════════ -->
+    <div id="phase-team_vote" class="card card-wide hidden">
+      <div class="phase-header">
+        <div>
+          <div class="text-muted" style="font-size:0.75rem;text-transform:uppercase;letter-spacing:.08em;">Mission <span id="vote-mission-num">1</span> of 5</div>
+          <h2 style="margin-bottom:0;">Vote on Team</h2>
+        </div>
+        <div class="phase-label" id="vote-progress">0 / 0 voted</div>
+      </div>
+
+      <div id="vote-mission-track" class="mission-track"></div>
+      <div class="timer-bar-wrap mb-2" id="vote-timer-wrap">
+        <div class="timer-bar-track">
+          <div class="timer-bar-fill" id="vote-timer-fill"></div>
+        </div>
+        <span class="timer-bar-label" id="vote-timer-label">—</span>
+      </div>
+
+      <div class="knowledge-panel mb-2">
+        <h3>Proposed Team</h3>
+        <div id="vote-proposed-team" class="player-list"></div>
+      </div>
+
+      <div class="player-list mb-2" id="vote-player-list"></div>
+
+      <div id="vote-buttons" class="vote-row">
+        <button class="btn btn-safe" id="btn-approve">✓ Approve</button>
+        <button class="btn btn-danger" id="btn-reject">✗ Reject</button>
+      </div>
+      <div id="vote-waiting" class="text-center text-muted hidden mt-2">
+        Vote submitted. Waiting for others…
+      </div>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════════════════
+         TEAM VOTE RESULT
+    ══════════════════════════════════════════════════════════════════════ -->
+    <div id="phase-team_vote_result" class="card card-wide hidden">
+      <h2 class="text-center">Vote Result</h2>
+
+      <div id="vote-result-banner" class="result-banner mb-2">
+        <div class="result-icon" id="vote-result-icon">—</div>
+        <div class="result-title" id="vote-result-title">—</div>
+        <div class="text-muted mt-1" id="vote-result-tally">—</div>
+      </div>
+
+      <h3>Individual Votes</h3>
+      <div class="player-list mb-2" id="vote-result-list"></div>
+
+      <div id="vote-result-rejection-warning" class="hidden text-center text-red mb-2" style="font-size:0.85rem;">
+        ⚠ <span id="vote-result-rejections-left">—</span> more rejections and Evil wins automatically!
+      </div>
+
+      <div id="vote-result-next-leader" class="next-leader-note hidden mb-2">
+        👑 Next leader: <strong id="vote-result-next-leader-name">—</strong>
+      </div>
+
+      <button class="btn btn-primary btn-full" id="btn-advance-vote-result">
+        Continue →
+      </button>
+      <div id="vote-result-host-note" class="text-center text-muted mt-1 hidden" style="font-size:0.8rem;">
+        Waiting for moderator to continue…
+      </div>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════════════════
+         MISSION
+    ══════════════════════════════════════════════════════════════════════ -->
+    <div id="phase-mission" class="card hidden">
+      <div class="phase-header">
+        <div>
+          <div class="text-muted" style="font-size:0.75rem;text-transform:uppercase;letter-spacing:.08em;">Mission <span id="mission-num">1</span> of 5</div>
+          <h2 style="margin-bottom:0;">Mission Vote</h2>
+        </div>
+        <div class="phase-label" id="mission-votes-progress">0 / 0</div>
+      </div>
+
+      <div id="mission-track" class="mission-track"></div>
+
+      <!-- On the mission -->
+      <div id="mission-active-panel">
+        <div class="knowledge-panel mb-2">
+          <h3>You are on this mission</h3>
+          <div class="role-desc" id="mission-team-note">-</div>
+        </div>
+        <div class="vote-row" id="mission-vote-buttons">
+          <button class="btn btn-safe" id="btn-success">✓ Success</button>
+          <button class="btn btn-danger" id="btn-fail">✗ Fail</button>
+        </div>
+        <div id="mission-submitted" class="text-center text-muted hidden mt-2">
+          Card submitted. Waiting for others…
+        </div>
+      </div>
+
+      <!-- Not on mission -->
+      <div id="mission-waiting-panel" class="hidden text-center">
+        <div class="text-muted" style="font-size:2rem;">🗡</div>
+        <div class="text-muted mt-1">The team is on the mission…</div>
+        <div class="player-list mt-2" id="mission-team-list"></div>
+      </div>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════════════════
+         MISSION RESULT
+    ══════════════════════════════════════════════════════════════════════ -->
+    <div id="phase-mission_result" class="card card-wide hidden">
+      <h2 class="text-center">Mission Result</h2>
+
+      <div id="mission-result-banner" class="result-banner">
+        <div class="result-icon" id="mission-result-icon">—</div>
+        <div class="result-title" id="mission-result-title">—</div>
+        <div class="text-muted mt-1" id="mission-result-detail">—</div>
+      </div>
+
+      <div id="mission-result-track" class="mission-track"></div>
+
+      <div class="text-center text-muted mb-2" id="mission-result-score" style="font-size:0.9rem;">—</div>
+
+      <div id="mission-result-next-leader" class="next-leader-note hidden mb-2">
+        👑 Next leader: <strong id="mission-result-next-leader-name">-</strong>
+      </div>
+
+      <button class="btn btn-primary btn-full" id="btn-advance-mission-result">
+        Continue →
+      </button>
+      <div id="mission-result-host-note" class="text-center text-muted mt-1 hidden" style="font-size:0.8rem;">
+        Waiting for moderator to continue…
+      </div>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════════════════
+         ASSASSINATION
+    ══════════════════════════════════════════════════════════════════════ -->
+    <div id="phase-assassination" class="card card-wide hidden">
+      <div class="text-center mb-2" style="font-size:2.5rem;">🗡</div>
+      <h2 class="text-center">Assassination</h2>
+      <p class="text-muted text-center mb-2">
+        Good has won 3 missions, but the Assassin has one final chance to identify Merlin.
+        If they succeed, Evil wins.
+      </p>
+
+      <!-- Assassin view -->
+      <div id="assassination-assassin-panel" class="hidden">
+        <div class="knowledge-panel mb-2">
+          <h3>You are the Assassin</h3>
+          <div class="text-muted" style="font-size:0.85rem;">
+            Choose carefully. Click a player, then confirm.
+          </div>
+        </div>
+        <div class="player-list mb-2" id="assassination-player-list"></div>
+        <button class="btn btn-danger btn-full" id="btn-assassinate" disabled>
+          Assassinate Selected Player
+        </button>
+      </div>
+
+      <!-- Others view -->
+      <div id="assassination-waiting-panel" class="hidden text-center">
+        <div class="text-muted">
+          The Assassin is deliberating…<br>Merlin must stay calm.
+        </div>
+        <div class="player-list mt-2" id="assassination-waiting-list"></div>
+      </div>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════════════════
+         GAME OVER
+    ══════════════════════════════════════════════════════════════════════ -->
+    <div id="phase-game_over" class="card card-wide hidden">
+      <div id="game-over-banner" class="game-over-banner">
+        <div style="font-size:3rem;" id="game-over-icon">—</div>
+        <div class="game-over-title" id="game-over-title">—</div>
+        <div class="text-muted mt-1" id="game-over-reason">—</div>
+      </div>
+
+      <h3>All Roles Revealed</h3>
+      <div class="player-list mb-2" id="game-over-roles-list"></div>
+
+      <div id="game-over-mission-track" class="mission-track mb-2"></div>
+
+      <!-- Host can start another round without everyone leaving -->
+      <button class="btn btn-primary btn-full hidden mb-1" id="btn-game-over-play-again">
+        Play Again (same players)
+      </button>
+      <div id="game-over-play-again-note" class="text-center text-muted mb-2 hidden" style="font-size:0.8rem;">
+        Waiting for host to start next game…
+      </div>
+      <button class="btn btn-ghost btn-full" onclick="window.location.href='/'">
+        Back to Lobby
+      </button>
+    </div>
+
+  </div><!-- /#app -->
+
+  <div id="toast-container"></div>
+
+  <!-- ── Role peek button (visible during active game phases) ────────────── -->
+  <button id="role-peek-btn" class="role-peek-btn hidden" onclick="toggleRolePeek()" title="Check your role">
+    🎭 My Role
+  </button>
+
+  <!-- ── Role peek overlay ───────────────────────────────────────────────── -->
+  <div id="role-peek-overlay" class="role-peek-overlay hidden" onclick="closeRolePeekIfOutside(event)">
+    <div class="role-peek-panel" id="role-peek-panel">
+      <div class="role-peek-header">
+        <span id="peek-title">Your Role</span>
+        <button class="role-peek-close" onclick="toggleRolePeek()">✕</button>
+      </div>
+      <div id="peek-role-card" class="role-card" style="margin-bottom:1rem;">
+        <div class="role-icon" id="peek-icon">?</div>
+        <div class="role-name" id="peek-name">-</div>
+        <div class="role-team" id="peek-team">-</div>
+        <div class="role-desc" id="peek-desc">-</div>
+      </div>
+      <div id="peek-knowledge-panel" class="knowledge-panel hidden" style="margin-bottom:0.5rem;">
+        <h3>You Can See</h3>
+        <div class="player-list" id="peek-knowledge-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.4/socket.io.min.js"></script>
+  <script>
+    // ════════════════════════════════════════════════════════════════════
+    //  CONNECTION & IDENTITY
+    // ════════════════════════════════════════════════════════════════════
+    const socket    = io();
+    let   mySid     = "";
+    let   myName    = sessionStorage.getItem("avalon_name")      || "";
+    let   roomCode  = sessionStorage.getItem("avalon_room_code") || "";
+    let   lastState = null;
+
+    // Reconnect with stored identity
+    socket.on("connect", () => {
+      mySid = socket.id;
+      if (myName && roomCode) {
+        socket.emit("join_room_request", { name: myName, room_code: roomCode });
+      } else {
+        window.location.href = "/";
+      }
+    });
+
+    socket.on("error", data => {
+      showToast(data.message, "error");
+    });
+
+    // ════════════════════════════════════════════════════════════════════
+    //  HELPERS
+    // ════════════════════════════════════════════════════════════════════
+    function showToast(msg, type = "info") {
+      const t = document.createElement("div");
+      t.className = `toast ${type}`;
+      t.textContent = msg;
+      document.getElementById("toast-container").appendChild(t);
+      setTimeout(() => t.remove(), 4500);
+    }
+
+    function initials(name) {
+      return name.split(" ").map(w => w[0]).join("").substring(0, 2).toUpperCase();
+    }
+
+    const PHASES = [
+      "pregame", "moderator_config", "role_config",
+      "role_reveal", "team_proposal", "team_vote", "team_vote_result",
+      "mission", "mission_result", "assassination", "game_over",
+    ];
+    function showPhase(phase) {
+      PHASES.forEach(p => {
+        const el = document.getElementById(`phase-${p}`);
+        if (el) el.classList.toggle("hidden", p !== phase);
+      });
+    }
+
+    // ── Role icons ────────────────────────────────────────────────────
+    const ROLE_ICONS = {
+      "Merlin":            "🧙",
+      "Percival":          "🛡",
+      "Loyal Servant":     "⚔",
+      "Assassin":          "🗡",
+      "Morgana":           "🔮",
+      "Mordred":           "💀",
+      "Oberon":            "🌑",
+      "Minion of Mordred": "👁",
+    };
+
+    // ── Mission track renderer ────────────────────────────────────────
+    function renderMissionTrack(containerId, state) {
+      const el = document.getElementById(containerId);
+      if (!el) return;
+      el.innerHTML = "";
+      const configs = {
+        5: [2,3,2,3,3], 6: [2,3,4,3,4],
+        7: [2,3,3,4,4], 8: [3,4,4,5,5],
+        9: [3,4,4,5,5], 10:[3,4,4,5,5],
+      };
+      const doubleFail = {7:4,8:4,9:4,10:4}; // mission (1-based) needing 2 fails
+      // Use active_player_count — excludes the passive moderator if present
+      const n     = state.active_player_count || state.num_players;
+      const sizes = configs[n] || configs[5];
+      const results = state.mission_results || [];
+
+      for (let i = 0; i < 5; i++) {
+        const pip = document.createElement("div");
+        const isDouble = doubleFail[n] === (i + 1);
+        let cls = "mission-pip";
+        if      (results[i] === "success") cls += " success";
+        else if (results[i] === "fail")    cls += " fail";
+        else if (i === (state.current_mission_number - 1)) cls += " current";
+        else    cls += " pending";
+
+        const icon = results[i] === "success" ? "✓"
+                   : results[i] === "fail"    ? "✗"
+                   : (i === state.current_mission_number - 1) ? "●" : "";
+
+        pip.className = cls;
+        pip.innerHTML = `
+          <span>${icon || sizes[i]}</span>
+          ${isDouble ? '<span class="double-fail-marker">2✗</span>' : ""}
+        `;
+        pip.title = `Mission ${i+1}: ${sizes[i]} players${isDouble ? ", needs 2 fails" : ""}`;
+        el.appendChild(pip);
+      }
+    }
+
+    // ── Rejection meter ───────────────────────────────────────────────
+    function renderRejectionMeter(containerId, count) {
+      const el = document.getElementById(containerId);
+      if (!el) return;
+      el.innerHTML = "";
+      for (let i = 0; i < 5; i++) {
+        const pip = document.createElement("div");
+        pip.className = "rejection-pip" + (i < count ? " used" : "");
+        pip.title = i < count ? "Rejected" : "Available";
+        el.appendChild(pip);
+      }
+    }
+
+    // ── Build a player chip ───────────────────────────────────────────
+    function playerChip({
+      sid, name, connected = true,
+      badges = [], extra = "", clickable = false, selected = false
+    }) {
+      const isMe = sid === mySid;
+      let cls = "player-chip";
+      if (isMe)      cls += " is-me";
+      if (selected)  cls += " is-selected";
+      if (clickable) cls += " clickable";
+      if (!connected)cls += " disconnected";
+
+      const badgeHTML = badges.map(b =>
+        `<span class="player-badge badge-${b.type}">${b.text}</span>`
+      ).join("");
+
+      return `
+        <div class="${cls}" data-sid="${sid}">
+          <div class="player-avatar">${initials(name)}</div>
+          <div class="player-name">${name}</div>
+          ${badgeHTML}
+          ${extra}
+        </div>
+      `;
+    }
+
+    // ════════════════════════════════════════════════════════════════════
+    //  MAIN STATE HANDLER
+    // ════════════════════════════════════════════════════════════════════
+    socket.on("game_state", state => {
+      mySid     = state.my_sid || socket.id;
+      lastState = state;
+
+      // Route to lobby if somehow we're back there
+      if (state.phase === "lobby") {
+        window.location.href = "/";
+        return;
+      }
+
+      showPhase(state.phase);
+      updateLeaderBar(state);
+      maybeStartTimer(state);
+      updateRolePeekBtn(state);
+
+      switch (state.phase) {
+        case "pregame":           renderPregame(state);          break;
+        case "moderator_config":  renderModeratorConfig(state);  break;
+        case "role_config":       renderRoleConfig(state);       break;
+        case "role_reveal":       renderRoleReveal(state);       break;
+        case "team_proposal":     renderTeamProposal(state);     break;
+        case "team_vote":         renderTeamVote(state);         break;
+        case "team_vote_result":  renderTeamVoteResult(state);   break;
+        case "mission":           renderMission(state);          break;
+        case "mission_result":    renderMissionResult(state);    break;
+        case "assassination":     renderAssassination(state);    break;
+        case "game_over":         renderGameOver(state);         break;
+      }
+    });
+
+    // ════════════════════════════════════════════════════════════════════
+    //  LEADER BAR
+    // ════════════════════════════════════════════════════════════════════
+
+    function updateLeaderBar(state) {
+      const bar      = document.getElementById("leader-bar");
+      const text     = document.getElementById("leader-bar-text");
+      const sub      = document.getElementById("leader-bar-sub");
+      const nextEl   = document.getElementById("leader-bar-next");
+      const divider  = document.getElementById("leader-bar-divider");
+      const hideOn   = ["lobby", "pregame", "role_reveal", "role_config",
+                        "moderator_config", "game_over"];
+
+      if (hideOn.includes(state.phase)) {
+        bar.classList.add("hidden");
+        document.body.classList.remove("has-leader-bar");
+        return;
+      }
+
+      // ── Passive moderator (spectator): show a game-state dashboard ────
+      // Never show "You" as leader or next — they are not in the rotation.
+      if (state.is_spectator) {
+        const missionScore =
+          `Good ${(state.mission_results||[]).filter(r=>r==="success").length} — `+
+          `Evil ${(state.mission_results||[]).filter(r=>r==="fail").length}`;
+        text.innerHTML = state.leader_name
+          ? `Leader: <strong>${state.leader_name}</strong>`
+          : `Mission ${state.current_mission_number} of 5`;
+        sub.textContent = `· ${missionScore}`;
+        nextEl.classList.add("hidden");
+        divider.classList.add("hidden");
+        bar.classList.remove("hidden");
+        document.body.classList.add("has-leader-bar");
+        return;
+      }
+
+      // ── Active players (including active moderator): normal leader bar ─
+      if (!state.leader_name) {
+        bar.classList.add("hidden");
+        document.body.classList.remove("has-leader-bar");
+        return;
+      }
+
+      const isYou = (state.leader_sid === mySid);
+      text.innerHTML = isYou
+        ? `<strong>You</strong> are the Leader`
+        : `<strong>${state.leader_name}</strong> is the Leader`;
+
+      const subText = {
+        "team_proposal":    "Propose your team",
+        "team_vote":        ": team vote in progress",
+        "team_vote_result": ": vote result",
+        "mission":          ": mission in progress",
+        "mission_result":   ": mission result",
+        "assassination":    ": assassination phase",
+      };
+      sub.textContent = subText[state.phase] || "";
+
+      // Next leader during proposal and vote phases
+      const showNextOn = ["team_proposal", "team_vote"];
+      if (showNextOn.includes(state.phase) && state.players) {
+        const active = state.players.filter(p => !p.is_spectator);
+        const idx    = active.findIndex(p => p.sid === state.leader_sid);
+        const nextP  = active[(idx + 1) % active.length];
+        if (nextP) {
+          const nextLabel = (nextP.sid === mySid) ? "You" : nextP.name;
+          nextEl.innerHTML = `Next: <strong>${nextLabel}</strong>`;
+          nextEl.classList.remove("hidden");
+          divider.classList.remove("hidden");
+        } else {
+          nextEl.classList.add("hidden");
+          divider.classList.add("hidden");
+        }
+      } else {
+        nextEl.classList.add("hidden");
+        divider.classList.add("hidden");
+      }
+
+      bar.classList.remove("hidden");
+      document.body.classList.add("has-leader-bar");
+    }
+
+    // ════════════════════════════════════════════════════════════════════
+    //  ROLE PEEK — "My Role" button and overlay
+    // ════════════════════════════════════════════════════════════════════
+
+    // Phases where the button should be visible
+    const ROLE_PEEK_PHASES = new Set([
+      "role_reveal", "team_proposal", "team_vote", "team_vote_result",
+      "mission", "mission_result", "assassination",
+    ]);
+
+    const ROLE_ICONS_PEEK = {
+      "Merlin":            "🧙",
+      "Percival":          "🛡",
+      "Loyal Servant":     "⚔",
+      "Assassin":          "🗡",
+      "Morgana":           "🔮",
+      "Mordred":           "💀",
+      "Oberon":            "🌑",
+      "Minion of Mordred": "👁",
+      "Moderator":         "🖥",
+    };
+
+    function updateRolePeekBtn(state) {
+      const btn = document.getElementById("role-peek-btn");
+      // Show button only during active game phases and only if player has a role
+      const show = ROLE_PEEK_PHASES.has(state.phase) && !!state.my_role;
+      btn.classList.toggle("hidden", !show);
+
+      // If overlay is open, refresh its content live (e.g. state update while open)
+      const overlay = document.getElementById("role-peek-overlay");
+      if (!overlay.classList.contains("hidden")) {
+        populateRolePeek(state);
+      }
+    }
+
+    function populateRolePeek(state) {
+      const role      = state.my_role  || "?";
+      const team      = state.my_team  || "?";
+      const desc      = state.role_description || "";
+      const isSpec    = state.is_spectator;
+      const icon      = ROLE_ICONS_PEEK[role] || "?";
+
+      document.getElementById("peek-icon").textContent = icon;
+      document.getElementById("peek-name").textContent = role;
+      document.getElementById("peek-desc").textContent = desc;
+
+      const teamEl = document.getElementById("peek-team");
+      if (isSpec) {
+        teamEl.textContent = "🖥 Moderator";
+        teamEl.className   = "role-team team-moderator";
+      } else {
+        teamEl.textContent = team === "good" ? "⚔ Good" : "💀 Evil";
+        teamEl.className   = `role-team team-${team}`;
+      }
+
+      document.getElementById("peek-role-card").className =
+        isSpec ? "role-card team-moderator" : `role-card team-${team}`;
+
+      // Night knowledge panel
+      const known    = state.night_knowledge?.known_players || {};
+      const knownIDs = Object.keys(known);
+      const kPanel   = document.getElementById("peek-knowledge-panel");
+      const kList    = document.getElementById("peek-knowledge-list");
+
+      if (knownIDs.length > 0) {
+        kPanel.classList.remove("hidden");
+        kList.innerHTML = knownIDs.map(sid => {
+          const entry     = known[sid];
+          const badgeType = entry.label === "Merlin" ? "good" : "evil";
+          return playerChip({
+            sid, name: entry.name,
+            badges: [{ type: badgeType, text: entry.label }],
+          });
+        }).join("");
+      } else {
+        kPanel.classList.add("hidden");
+      }
+    }
+
+    function toggleRolePeek() {
+      const overlay = document.getElementById("role-peek-overlay");
+      const isOpen  = !overlay.classList.contains("hidden");
+      if (isOpen) {
+        overlay.classList.add("hidden");
+      } else {
+        if (lastState) populateRolePeek(lastState);
+        overlay.classList.remove("hidden");
+      }
+    }
+
+    function closeRolePeekIfOutside(event) {
+      // Close if click is directly on the overlay backdrop (not the panel)
+      if (event.target === document.getElementById("role-peek-overlay")) {
+        document.getElementById("role-peek-overlay").classList.add("hidden");
+      }
+    }
+
+    // ════════════════════════════════════════════════════════════════════
+    //  ADVISORY TIMER ENGINE
+    // ════════════════════════════════════════════════════════════════════
+    // Purely client-side. Server never enforces. When time is up the bar
+    // turns red and pulses — social pressure only.
+
+    let   _timerInterval = null;
+    let   _timerStart    = null;  // Date.now() when phase began
+    let   _timerDuration = 0;     // total seconds for this phase
+    const _timerFillId   = { team_proposal: "proposal-timer-fill",
+                              team_vote:     "vote-timer-fill" };
+    const _timerLabelId  = { team_proposal: "proposal-timer-label",
+                              team_vote:     "vote-timer-label" };
+    const _timerWrapId   = { team_proposal: "proposal-timer-wrap",
+                              team_vote:     "vote-timer-wrap" };
+
+    // Call this whenever we enter a timed phase with a fresh start time.
+    // seconds: from state.timer_proposal or state.timer_vote.
+    function startTimer(phase, seconds) {
+      stopTimer();
+      if (!seconds || seconds <= 0) return;
+      if (!_timerFillId[phase]) return;
+
+      _timerDuration = seconds;
+      _timerStart    = Date.now();
+
+      // Show the wrap
+      const wrap = document.getElementById(_timerWrapId[phase]);
+      if (wrap) wrap.classList.remove("hidden");
+
+      _timerInterval = setInterval(() => tickTimer(phase), 500);
+      tickTimer(phase);  // draw immediately
+    }
+
+    function tickTimer(phase) {
+      const elapsed  = (Date.now() - _timerStart) / 1000;
+      const remaining = Math.max(0, _timerDuration - elapsed);
+      const pct       = (remaining / _timerDuration) * 100;
+
+      const fill  = document.getElementById(_timerFillId[phase]);
+      const label = document.getElementById(_timerLabelId[phase]);
+      if (!fill || !label) return;
+
+      fill.style.width = `${pct}%`;
+
+      // Colour: green → amber at 40% → red at 15%
+      if (pct > 40)      fill.className = "timer-bar-fill";
+      else if (pct > 15) fill.className = "timer-bar-fill amber";
+      else               fill.className = "timer-bar-fill danger";
+
+      const mins = Math.floor(remaining / 60);
+      const secs = Math.floor(remaining % 60);
+      const timeStr = `${mins}:${secs.toString().padStart(2, "0")}`;
+
+      if (remaining <= 0) {
+        label.textContent = "⏱ Time's up! Keep moving!";
+        label.style.color = "var(--red)";
+        clearInterval(_timerInterval);
+        _timerInterval = null;
+      } else {
+        label.textContent = `⏱ ${timeStr}`;
+        label.style.color = pct <= 15 ? "var(--red)" : "var(--text-muted)";
+      }
+    }
+
+    function stopTimer() {
+      if (_timerInterval) {
+        clearInterval(_timerInterval);
+        _timerInterval = null;
+      }
+    }
+
+    // Track which phase+mission we last started a timer for, so a
+    // re-render of the same phase doesn't restart the timer.
+    let _timerKey = null;
+
+    function maybeStartTimer(state) {
+      const key = `${state.phase}-${state.current_mission_number}-${state.consecutive_rejections}`;
+      if (key === _timerKey) return;   // same phase tick — don't reset
+      _timerKey = key;
+
+      if (state.phase === "team_proposal") {
+        startTimer("team_proposal", state.timer_proposal || 180);
+      } else if (state.phase === "team_vote") {
+        startTimer("team_vote", state.timer_vote || 90);
+      } else {
+        stopTimer();
+      }
+    }
+
+    // ════════════════════════════════════════════════════════════════════
+    //  PHASE RENDERERS
+    // ════════════════════════════════════════════════════════════════════
+
+    // ── Pregame ───────────────────────────────────────────────────────
+    function renderPregame(state) {
+      document.getElementById("pregame-room-code").textContent = state.room_code || "——";
+      document.getElementById("pregame-player-count").textContent =
+        `${state.num_players} / 11`;
+
+      const list = document.getElementById("pregame-player-list");
+      list.innerHTML = state.players.map(p => playerChip({
+        sid: p.sid, name: p.name, connected: p.connected,
+        badges: [
+          ...(p.sid === state.host_sid ? [{ type: "host", text: "HOST" }] : []),
+          ...(p.sid === mySid          ? [{ type: "me",   text: "YOU"  }] : []),
+        ],
+      })).join("");
+
+      const isHost = state.is_host;
+      document.getElementById("btn-pregame-start").classList.toggle("hidden", !isHost);
+      document.getElementById("pregame-status").classList.toggle("hidden", isHost);
+    }
+
+    document.getElementById("btn-pregame-start").addEventListener("click", () => {
+      // In PREGAME, we go straight to start — reset already happened via play_again
+      socket.emit("start_game");
+    });
+
+    // ── Moderator Config ──────────────────────────────────────────────
+    let modConfigMode     = null;   // "active" | "passive"
+    let modConfigNominee  = null;   // sid of chosen moderator
+
+    const MOD_MODE_INFO = {
+      active: {
+        title: "Active Moderator",
+        body:  "Everyone including the moderator gets a role and plays. " +
+               "The moderator also manages game pace (advancing phases). " +
+               "Best when all seats are needed."
+      },
+      passive: {
+        title: "Passive Moderator (Big Screen)",
+        body:  "The moderator gets no role and does not vote. They manage the " +
+               "game from a shared screen visible to all players. " +
+               "Use this when you have a display in the room or 11 players."
+      },
+    };
+
+    function renderModeratorConfig(state) {
+      const isHost = state.is_host;
+      document.getElementById("mod-config-host-panel").classList.toggle("hidden", !isHost);
+      document.getElementById("mod-config-waiting-panel").classList.toggle("hidden", isHost);
+
+      if (!isHost) {
+        document.getElementById("mod-config-player-list").innerHTML =
+          state.players.map(p => playerChip({
+            sid: p.sid, name: p.name, connected: p.connected,
+            badges: [
+              ...(p.sid === state.host_sid ? [{ type: "host", text: "HOST" }] : []),
+              ...(p.sid === mySid          ? [{ type: "me",   text: "YOU"  }] : []),
+            ],
+          })).join("");
+        return;
+      }
+
+      // Build mode cards
+      const modeList = document.getElementById("mod-config-mode-list");
+      modeList.innerHTML = "";
+      ["active", "passive"].forEach(mode => {
+        // Force passive for 11 players
+        if (mode === "active" && state.must_be_passive) return;
+
+        const isSelected = (modConfigMode === mode);
+        const card       = document.createElement("div");
+        card.className   = `player-chip clickable${isSelected ? " is-selected" : ""}`;
+        card.innerHTML   = `
+          <div class="player-avatar">${mode === "active" ? "⚔" : "🖥"}</div>
+          <div style="flex:1;">
+            <div style="font-weight:600;color:var(--text);">
+              ${mode === "active" ? "Active Moderator" : "Passive Moderator"}
+            </div>
+            <div style="font-size:0.8rem;color:var(--text-muted);margin-top:0.2rem;">
+              ${MOD_MODE_INFO[mode].body}
+            </div>
+          </div>
+          <span class="player-badge ${isSelected ? "badge-good" : "badge-voted"}">
+            ${isSelected ? "✓ Selected" : "Select"}
+          </span>`;
+        card.addEventListener("click", () => {
+          modConfigMode    = mode;
+          modConfigNominee = null;   // reset nominee when mode changes
+          renderModeratorConfig(state);
+        });
+        modeList.appendChild(card);
+      });
+
+      // Nominee list (shown once mode is selected)
+      const nomineeSection = document.getElementById("mod-config-nominee-section");
+      const nomineeList    = document.getElementById("mod-config-nominee-list");
+      if (modConfigMode) {
+        nomineeSection.classList.remove("hidden");
+        nomineeList.innerHTML = "";
+        state.players.forEach(p => {
+          const isSelected = (modConfigNominee === p.sid);
+          const chip       = document.createElement("div");
+          chip.className   = `player-chip clickable${isSelected ? " is-selected" : ""}`;
+          chip.innerHTML   = `
+            <div class="player-avatar">${initials(p.name)}</div>
+            <div class="player-name">${p.name}</div>
+            ${p.sid === state.host_sid ? '<span class="player-badge badge-host">HOST</span>' : ""}
+            ${p.sid === mySid          ? '<span class="player-badge badge-me">YOU</span>'   : ""}
+            <span class="player-badge ${isSelected ? "badge-good" : "badge-voted"}">
+              ${isSelected ? "✓ Moderator" : "Choose"}
+            </span>`;
+          chip.addEventListener("click", () => {
+            modConfigNominee = p.sid;
+            renderModeratorConfig(state);
+          });
+          nomineeList.appendChild(chip);
+        });
+      } else {
+        nomineeSection.classList.add("hidden");
+      }
+
+      document.getElementById("btn-confirm-moderator").disabled =
+        !(modConfigMode && modConfigNominee);
+    }
+
+    document.getElementById("btn-confirm-moderator").addEventListener("click", () => {
+      if (!modConfigMode || !modConfigNominee) return;
+      socket.emit("configure_moderator", {
+        mode:          modConfigMode,
+        moderator_sid: modConfigNominee,
+      });
+      modConfigMode    = null;
+      modConfigNominee = null;
+    });
+
+    // ── Role Config ───────────────────────────────────────────────────
+    let roleConfigSelected = new Set();
+
+    const ROLE_ICONS_MAP = ROLE_ICONS;   // alias — ROLE_ICONS declared above
+
+    function renderRoleConfig(state) {
+      const isHost = state.is_host;
+      document.getElementById("role-config-host-panel").classList.toggle("hidden", !isHost);
+      document.getElementById("role-config-waiting-panel").classList.toggle("hidden", isHost);
+
+      if (!isHost) {
+        document.getElementById("role-config-player-list").innerHTML =
+          state.players.map(p => playerChip({
+            sid: p.sid, name: p.name, connected: p.connected,
+            badges: [
+              ...(p.sid === state.host_sid ? [{ type: "host", text: "HOST" }] : []),
+              ...(p.sid === mySid          ? [{ type: "me",   text: "YOU"  }] : []),
+            ],
+          })).join("");
+        return;
+      }
+
+      const container = document.getElementById("role-config-options");
+      container.innerHTML = "";
+      const options = state.optional_role_data || [];
+
+      if (options.length === 0) {
+        container.innerHTML = `<div class="text-muted text-center">No optional roles at this player count.</div>`;
+        return;
+      }
+
+      options.forEach(opt => {
+        const isSel = roleConfigSelected.has(opt.value);
+        const card  = document.createElement("div");
+        card.className = `player-chip clickable${isSel ? " is-selected" : ""}`;
+        card.innerHTML = `
+          <div class="player-avatar" style="font-size:1.3rem;">
+            ${ROLE_ICONS_MAP[opt.value] || "?"}
+          </div>
+          <div style="flex:1;">
+            <div style="font-weight:600;color:var(--text);">${opt.value}</div>
+            <div style="font-size:0.78rem;color:var(--gold);margin-bottom:0.2rem;">${opt.headline}</div>
+            <div style="font-size:0.8rem;color:var(--text-muted);line-height:1.4;">${opt.detail}</div>
+            <div style="font-size:0.75rem;color:var(--red);margin-top:0.25rem;">${opt.difficulty}</div>
+          </div>
+          <span class="player-badge ${isSel ? "badge-evil" : "badge-voted"}">
+            ${isSel ? "✓ Include" : "Exclude"}
+          </span>`;
+        card.addEventListener("click", () => {
+          if (roleConfigSelected.has(opt.value)) {
+            roleConfigSelected.delete(opt.value);
+          } else {
+            roleConfigSelected.add(opt.value);
+          }
+          renderRoleConfig(state);
+        });
+        container.appendChild(card);
+      });
+    }
+
+    document.getElementById("btn-confirm-roles").addEventListener("click", () => {
+      socket.emit("configure_roles", { chosen_roles: Array.from(roleConfigSelected) });
+      roleConfigSelected.clear();
+    });
+
+    // ── Role Reveal ───────────────────────────────────────────────────
+    let readyClicked = false;
+
+    function renderRoleReveal(state) {
+      const isSpectator = state.is_spectator;
+      const role = state.my_role  || "—";
+      const team = state.my_team  || "—";
+      const desc = state.role_description || "—";
+
+      // Moderator gets a distinct neutral card (not good, not evil)
+      const icon = isSpectator ? "🖥" : (ROLE_ICONS[role] || "?");
+      document.getElementById("role-icon").textContent  = icon;
+      document.getElementById("role-name").textContent  = role;
+      document.getElementById("role-desc").textContent  = desc;
+      document.getElementById("role-card").className    =
+        isSpectator ? "role-card team-moderator" : `role-card team-${team}`;
+
+      const teamEl = document.getElementById("role-team");
+      if (isSpectator) {
+        teamEl.textContent = "🖥 Moderator";
+        teamEl.className   = "role-team team-moderator";
+      } else {
+        teamEl.textContent = team === "good" ? "⚔ Good" : "💀 Evil";
+        teamEl.className   = `role-team team-${team}`;
+      }
+
+      // Night knowledge — spectator sees nothing
+      const known    = state.night_knowledge?.known_players || {};
+      const knownIDs = Object.keys(known);
+      const kPanel   = document.getElementById("knowledge-panel");
+      const kList    = document.getElementById("knowledge-list");
+      if (knownIDs.length > 0) {
+        kPanel.classList.remove("hidden");
+        kList.innerHTML = knownIDs.map(sid => {
+          const entry = known[sid];
+          return playerChip({
+            sid, name: entry.name,
+            badges: [{
+              // "Merlin"  → confirmed (no Morgana) → blue good badge
+              // "Merlin?" → ambiguous (Morgana present) → red evil badge
+              // "Evil" / "Evil Ally" → red evil badge
+              type: entry.label === "Merlin" ? "good" : "evil",
+              text: entry.label
+            }]
+          });
+        }).join("");
+      } else {
+        kPanel.classList.add("hidden");
+      }
+
+      // Ready status — moderator doesn't press "I'm Ready" (spectator is ignored server-side)
+      // but we still show a waiting message so their screen isn't blank
+      if (isSpectator) {
+        const readyCnt = state.ready_count || 0;
+        const active   = state.active_player_count || state.num_players;
+        document.getElementById("ready-status").textContent =
+          `${readyCnt} / ${active} players ready`;
+        document.getElementById("btn-ready").classList.add("hidden");
+      } else {
+        const readyCnt = state.ready_count || 0;
+        const active   = state.active_player_count || state.num_players;
+        document.getElementById("ready-status").textContent =
+          `${readyCnt} / ${active} players ready`;
+        document.getElementById("btn-ready").classList.remove("hidden");
+        document.getElementById("btn-ready").disabled = readyClicked;
+      }
+    }
+
+    document.getElementById("btn-ready").addEventListener("click", () => {
+      readyClicked = true;
+      document.getElementById("btn-ready").disabled = true;
+      socket.emit("player_ready");
+    });
+
+    // ── Team Proposal ─────────────────────────────────────────────────
+    let selectedTeam = new Set();
+
+    function renderTeamProposal(state) {
+      const isLeader  = state.is_leader;
+      const teamSize  = state.mission_team_size;
+      const missionN  = state.current_mission_number;
+
+      document.getElementById("proposal-mission-num").textContent = missionN;
+      document.getElementById("proposal-team-size-label").textContent =
+        `Pick ${teamSize}`;
+      document.getElementById("proposal-need").textContent = teamSize;
+
+      renderMissionTrack("proposal-mission-track", state);
+      renderRejectionMeter("proposal-rejection-meter", state.consecutive_rejections);
+
+      if (isLeader) {
+        document.getElementById("proposal-leader-panel").classList.remove("hidden");
+        document.getElementById("proposal-waiting-panel").classList.add("hidden");
+        renderProposalLeaderView(state, teamSize);
+      } else {
+        document.getElementById("proposal-leader-panel").classList.add("hidden");
+        document.getElementById("proposal-waiting-panel").classList.remove("hidden");
+        document.getElementById("proposal-leader-name").textContent = state.leader_name || "—";
+        renderProposalWaitingView(state);
+      }
+    }
+
+    function renderProposalLeaderView(state, teamSize) {
+      const list = document.getElementById("proposal-player-list");
+      list.innerHTML = "";
+
+      // Active (non-spectator) players — clickable and selectable
+      state.players.filter(p => !p.is_spectator).forEach(p => {
+        const isSel = selectedTeam.has(p.sid);
+        const chip  = document.createElement("div");
+        chip.innerHTML = playerChip({
+          sid: p.sid, name: p.name, connected: p.connected,
+          selected: isSel, clickable: true,
+          badges: isSel ? [{ type: "selected", text: "On Team" }] : [],
+          extra: p.sid === mySid ? `<span class="player-badge badge-me">YOU</span>` : "",
+        });
+        const inner = chip.firstElementChild;
+        inner.addEventListener("click", () => toggleProposalSelection(p.sid, teamSize, state));
+        list.appendChild(inner);
+      });
+
+      // Passive moderator — shown separately at bottom, never clickable
+      const moderator = state.players.find(p => p.is_spectator);
+      if (moderator) {
+        const chip = document.createElement("div");
+        chip.innerHTML = playerChip({
+          sid: moderator.sid, name: moderator.name, connected: moderator.connected,
+          clickable: false,
+          badges: [{ type: "moderator", text: "🖥 MODERATOR" }],
+        });
+        list.appendChild(chip.firstElementChild);
+      }
+
+      updateProposeButton(teamSize);
+    }
+
+    function renderProposalWaitingView(state) {
+      const list = document.getElementById("proposal-waiting-player-list");
+      // Active players listed normally
+      const activeChips = state.players.filter(p => !p.is_spectator).map(p => playerChip({
+        sid: p.sid, name: p.name, connected: p.connected,
+        badges: [
+          ...(p.is_leader  ? [{ type: "leader", text: "LEADER" }] : []),
+          ...(p.sid===mySid? [{ type: "me",     text: "YOU" }]    : []),
+        ],
+      }));
+      // Passive moderator shown separately at bottom
+      const moderator = state.players.find(p => p.is_spectator);
+      const modChip   = moderator ? [playerChip({
+        sid: moderator.sid, name: moderator.name, connected: moderator.connected,
+        badges: [{ type: "moderator", text: "🖥 MODERATOR" }],
+      })] : [];
+      list.innerHTML = [...activeChips, ...modChip].join("");
+    }
+
+    function toggleProposalSelection(sid, teamSize, state) {
+      if (selectedTeam.has(sid)) {
+        selectedTeam.delete(sid);
+      } else if (selectedTeam.size < teamSize) {
+        selectedTeam.add(sid);
+      }
+      renderProposalLeaderView(state, teamSize);
+    }
+
+    function updateProposeButton(teamSize) {
+      const btn = document.getElementById("btn-propose");
+      btn.textContent = `Propose Team (${selectedTeam.size} / ${teamSize})`;
+      btn.disabled = (selectedTeam.size !== teamSize);
+    }
+
+    document.getElementById("btn-propose").addEventListener("click", () => {
+      if (!lastState) return;
+      socket.emit("propose_team", { team: Array.from(selectedTeam) });
+      selectedTeam.clear();
+    });
+
+    // ── Team Vote ─────────────────────────────────────────────────────
+    function renderTeamVote(state) {
+      document.getElementById("vote-mission-num").textContent  = state.current_mission_number;
+      document.getElementById("vote-progress").textContent     =
+        `${state.votes_in} / ${state.active_player_count} voted`;
+      renderMissionTrack("vote-mission-track", state);
+
+      // Proposed team
+      const proposedDiv = document.getElementById("vote-proposed-team");
+      proposedDiv.innerHTML = (state.proposed_team || []).map(sid => {
+        const p = state.players.find(x => x.sid === sid);
+        return p ? playerChip({ sid, name: p.name }) : "";
+      }).join("");
+
+      // All players + vote status
+      const list = document.getElementById("vote-player-list");
+      list.innerHTML = state.players.map(p => playerChip({
+        sid: p.sid, name: p.name, connected: p.connected,
+        badges: [
+          ...(p.has_team_voted ? [{ type: "voted", text: "Voted" }] : []),
+          ...(p.sid === mySid  ? [{ type: "me", text: "YOU" }] : []),
+        ]
+      })).join("");
+
+      // Vote buttons — passive moderator (spectator) cannot vote at all
+      if (state.is_spectator) {
+        document.getElementById("vote-buttons").classList.add("hidden");
+        document.getElementById("vote-waiting").classList.add("hidden");
+      } else {
+        const hasVoted = state.has_team_voted;
+        document.getElementById("vote-buttons").classList.toggle("hidden",  hasVoted);
+        document.getElementById("vote-waiting").classList.toggle("hidden", !hasVoted);
+      }
+    }
+
+    document.getElementById("btn-approve").addEventListener("click", () => {
+      socket.emit("vote_team", { approve: true });
+    });
+    document.getElementById("btn-reject").addEventListener("click", () => {
+      socket.emit("vote_team", { approve: false });
+    });
+
+    // ── Team Vote Result ──────────────────────────────────────────────
+    function renderTeamVoteResult(state) {
+      const result = state.last_vote_result;
+      if (!result) return;
+
+      const banner = document.getElementById("vote-result-banner");
+      const icon   = document.getElementById("vote-result-icon");
+      const title  = document.getElementById("vote-result-title");
+      const tally  = document.getElementById("vote-result-tally");
+
+      if (result.approved) {
+        banner.className = "result-banner success";
+        icon.textContent  = "✓";
+        title.textContent = "Team Approved!";
+      } else {
+        banner.className = "result-banner fail";
+        icon.textContent  = "✗";
+        title.textContent = "Team Rejected";
+      }
+      tally.textContent = `${result.approvals} approved · ${result.rejections} rejected`;
+
+      // Individual votes
+      const list = document.getElementById("vote-result-list");
+      list.innerHTML = "";
+      if (result.votes) {
+        const sorted = Object.entries(result.votes).sort((a,b) => b[1] - a[1]);
+        sorted.forEach(([name, approved]) => {
+          const p = state.players.find(x => x.name === name);
+          const sid = p?.sid || name;
+          const chip = document.createElement("div");
+          chip.innerHTML = playerChip({
+            sid, name,
+            badges: [{
+              type: approved ? "good" : "evil",
+              text: approved ? "✓ Approve" : "✗ Reject"
+            }]
+          });
+          list.appendChild(chip.firstElementChild);
+        });
+      }
+
+      // Rejection warning
+      const rejWarn = document.getElementById("vote-result-rejection-warning");
+      if (!result.approved && result.consecutive_rejections < 5) {
+        const left = 5 - result.consecutive_rejections;
+        rejWarn.classList.remove("hidden");
+        document.getElementById("vote-result-rejections-left").textContent = left;
+      } else {
+        rejWarn.classList.add("hidden");
+      }
+
+      // Next leader — only shown when team rejected and game continues
+      const nextLeaderDiv  = document.getElementById("vote-result-next-leader");
+      const nextLeaderName = document.getElementById("vote-result-next-leader-name");
+      if (!result.approved && result.next_leader && result.next_phase === "team_proposal") {
+        const myName = state.players.find(p => p.sid === mySid)?.name;
+        nextLeaderName.textContent = (result.next_leader === myName) ? "You" : result.next_leader;
+        nextLeaderDiv.classList.remove("hidden");
+      } else {
+        nextLeaderDiv.classList.add("hidden");
+      }
+
+      // Advance: moderator (active or passive) clicks Continue; falls back to host
+      const canAdv = state.can_advance;
+      document.getElementById("btn-advance-vote-result").classList.toggle("hidden",  !canAdv);
+      document.getElementById("vote-result-host-note").classList.toggle("hidden",   canAdv);
+    }
+
+    document.getElementById("btn-advance-vote-result").addEventListener("click", () => {
+      socket.emit("advance_from_vote_result");
+    });
+
+    // ── Mission ───────────────────────────────────────────────────────
+    function renderMission(state) {
+      document.getElementById("mission-num").textContent =
+        state.current_mission_number;
+      document.getElementById("mission-votes-progress").textContent =
+        `${state.mission_votes_in} / ${state.proposed_team?.length || 0}`;
+
+      renderMissionTrack("mission-track", state);
+
+      const isOnMission = state.is_on_mission;
+      document.getElementById("mission-active-panel").classList.toggle("hidden", !isOnMission);
+      document.getElementById("mission-waiting-panel").classList.toggle("hidden", isOnMission);
+
+      if (isOnMission) {
+        const isEvil = state.my_team === "evil";
+        const noteEl = document.getElementById("mission-team-note");
+        if (isEvil) {
+          noteEl.innerHTML = `<span class="text-red">You may play <strong>Fail</strong> to sabotage this mission, or <strong>Success</strong> to stay hidden.</span>`;
+        } else {
+          noteEl.innerHTML = `<span class="text-blue">As a Good player, you <strong>must</strong> play Success.</span>`;
+          document.getElementById("btn-fail").disabled = true;
+          document.getElementById("btn-fail").classList.add("hidden");
+        }
+
+        const hasVoted = state.has_mission_voted;
+        document.getElementById("mission-vote-buttons").classList.toggle("hidden", hasVoted);
+        document.getElementById("mission-submitted").classList.toggle("hidden", !hasVoted);
+      } else {
+        // Show who is on the mission
+        const teamList = document.getElementById("mission-team-list");
+        teamList.innerHTML = (state.proposed_team || []).map(sid => {
+          const p = state.players.find(x => x.sid === sid);
+          return p ? playerChip({
+            sid, name: p.name,
+            badges: [{ type: "selected", text: "On Mission" }]
+          }) : "";
+        }).join("");
+      }
+    }
+
+    document.getElementById("btn-success").addEventListener("click", () => {
+      socket.emit("vote_mission", { success: true });
+    });
+    document.getElementById("btn-fail").addEventListener("click", () => {
+      if (confirm("Are you sure you want to play FAIL? This will sabotage the mission.")) {
+        socket.emit("vote_mission", { success: false });
+      }
+    });
+
+    // ── Mission Result ────────────────────────────────────────────────
+    function renderMissionResult(state) {
+      const result = state.last_mission_result;
+      if (!result) return;
+
+      const banner = document.getElementById("mission-result-banner");
+      const icon   = document.getElementById("mission-result-icon");
+      const title  = document.getElementById("mission-result-title");
+      const detail = document.getElementById("mission-result-detail");
+
+      if (result.succeeded) {
+        banner.className = "result-banner success";
+        icon.textContent  = "✓";
+        title.textContent = `Mission ${result.mission_number} Succeeded!`;
+        detail.textContent = result.fail_count === 0
+          ? "All cards were Success."
+          : `${result.fail_count} Fail card(s), but ${result.fails_required} were needed.`;
+      } else {
+        banner.className = "result-banner fail";
+        icon.textContent  = "✗";
+        title.textContent = `Mission ${result.mission_number} Failed!`;
+        detail.textContent = `${result.fail_count} Fail card(s) sabotaged the mission.`;
+      }
+
+      renderMissionTrack("mission-result-track", state);
+
+      document.getElementById("mission-result-score").textContent =
+        `Good: ${result.good_wins} wins · Evil: ${result.evil_wins} wins`;
+
+      // Next leader on mission result screen.
+      // By the time MISSION_RESULT phase is active, resolve_mission() has already
+      // incremented leader_index on the server. So state.leader_sid IS the next
+      // leader — no +1 computation needed here.
+      const nextDiv  = document.getElementById("mission-result-next-leader");
+      const nextName = document.getElementById("mission-result-next-leader-name");
+      if (result.next_phase === "team_proposal" && state.leader_name) {
+        const isNextYou = (state.leader_sid === mySid);
+        nextName.textContent = isNextYou ? "You" : state.leader_name;
+        nextDiv.classList.remove("hidden");
+      } else {
+        nextDiv.classList.add("hidden");
+      }
+
+      // Advance: moderator (active or passive) clicks Continue; falls back to host
+      const canAdv = state.can_advance;
+      document.getElementById("btn-advance-mission-result").classList.toggle("hidden",  !canAdv);
+      document.getElementById("mission-result-host-note").classList.toggle("hidden",   canAdv);
+    }
+
+    document.getElementById("btn-advance-mission-result").addEventListener("click", () => {
+      socket.emit("advance_from_mission_result");
+    });
+
+    // ── Assassination ─────────────────────────────────────────────────
+    let assassinTarget = null;
+
+    function renderAssassination(state) {
+      const isAssassin = state.is_assassin;
+      document.getElementById("assassination-assassin-panel").classList.toggle("hidden", !isAssassin);
+      document.getElementById("assassination-waiting-panel").classList.toggle("hidden", isAssassin);
+
+      if (isAssassin) {
+        assassinTarget = null;
+        const list = document.getElementById("assassination-player-list");
+        list.innerHTML = "";
+        state.players.forEach(p => {
+          if (p.sid === mySid) return;  // can't target yourself
+          if (p.is_spectator)  return;  // moderator cannot be targeted
+          const chip = document.createElement("div");
+          chip.innerHTML = playerChip({
+            sid: p.sid, name: p.name, connected: p.connected,
+            clickable: true,
+            selected: assassinTarget === p.sid,
+          });
+          const inner = chip.firstElementChild;
+          inner.addEventListener("click", () => {
+            assassinTarget = p.sid;
+            document.getElementById("btn-assassinate").disabled = false;
+            // Refresh selection highlights
+            list.querySelectorAll(".player-chip").forEach(c => {
+              c.classList.toggle("is-selected", c.dataset.sid === assassinTarget);
+            });
+          });
+          list.appendChild(inner);
+        });
+        document.getElementById("btn-assassinate").disabled = true;
+      } else {
+        const list = document.getElementById("assassination-waiting-list");
+        // Exclude passive moderator — they are not players
+        list.innerHTML = state.players
+          .filter(p => !p.is_spectator)
+          .map(p => playerChip({
+            sid: p.sid, name: p.name, connected: p.connected,
+            badges: p.sid === mySid ? [{ type: "me", text: "YOU" }] : []
+          })).join("");
+      }
+    }
+
+    document.getElementById("btn-assassinate").addEventListener("click", () => {
+      if (!assassinTarget) return;
+      const target = lastState?.players?.find(p => p.sid === assassinTarget);
+      if (!target) return;
+      if (!confirm(`Assassinate ${target.name}? This cannot be undone.`)) return;
+      socket.emit("assassinate", { target_sid: assassinTarget });
+    });
+
+    // ── Game Over ─────────────────────────────────────────────────────
+    function renderGameOver(state) {
+      const isGoodWin = state.winner === "good";
+      const banner    = document.getElementById("game-over-banner");
+      banner.className = `game-over-banner ${isGoodWin ? "good-wins" : "evil-wins"}`;
+
+      document.getElementById("game-over-icon").textContent  = isGoodWin ? "⚔" : "💀";
+      document.getElementById("game-over-title").textContent = isGoodWin ? "Good Wins!" : "Evil Wins!";
+      document.getElementById("game-over-reason").textContent= state.win_reason || "";
+
+      // Roles
+      const roleList = document.getElementById("game-over-roles-list");
+      roleList.innerHTML = (state.all_roles || []).map(r => playerChip({
+        sid: r.name, name: r.name,
+        badges: [{ type: r.team, text: r.role }]
+      })).join("");
+
+      renderMissionTrack("game-over-mission-track", state);
+
+      // Play Again — host only; everyone else sees a waiting note
+      const isHost = state.is_host;
+      document.getElementById("btn-game-over-play-again").classList.toggle("hidden", !isHost);
+      document.getElementById("game-over-play-again-note").classList.toggle("hidden",  isHost);
+    }
+
+    document.getElementById("btn-game-over-play-again").addEventListener("click", () => {
+      // reset_for_next_game transitions to PREGAME; from there host clicks Start Next Game
+      socket.emit("play_again");
+    });
+
+    // ════════════════════════════════════════════════════════════════════
+    //  RECONNECTION / REDIRECT
+    // ════════════════════════════════════════════════════════════════════
+    socket.on("joined_room", data => {
+      roomCode = data.room_code;
+      sessionStorage.setItem("avalon_room_code", roomCode);
+    });
+
+  </script>
+</body>
+</html>

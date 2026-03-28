@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>The Resistance: Avalon</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+  <div class="page">
+    <!-- ── Landing ───────────────────────────────────────────────────── -->
+    <div id="screen-landing" class="card">
+      <div class="logo">⚔ Avalon</div>
+      <div class="subtitle">The Resistance: Online Edition</div>
+
+      <div class="form-group">
+        <label for="input-name">Your Name</label>
+        <input type="text" id="input-name" placeholder="Enter your name…" maxlength="20" autofocus>
+      </div>
+
+      <button class="btn btn-primary btn-full" id="btn-create">Create New Room</button>
+
+      <div class="divider">or join existing</div>
+
+      <div class="form-group">
+        <label for="input-code">Room Code</label>
+        <input type="text" id="input-code" placeholder="e.g. AB3X9Q" maxlength="6" style="text-transform:uppercase;letter-spacing:0.15em;">
+      </div>
+      <button class="btn btn-ghost btn-full" id="btn-join">Join Room</button>
+    </div>
+
+    <!-- ── Lobby (waiting room) ──────────────────────────────────────── -->
+    <div id="screen-lobby" class="card hidden">
+      <div class="phase-header">
+        <div>
+          <div class="logo" style="font-size:1.4rem;margin-bottom:0;">⚔ Avalon</div>
+          <div class="text-muted" style="font-size:0.8rem;">Waiting for players…</div>
+        </div>
+        <div class="phase-label" id="lobby-player-count">0 / 10</div>
+      </div>
+
+      <div class="room-code-display" id="lobby-room-code">——</div>
+      <div class="room-code-hint">Share this code with your friends</div>
+
+      <h3>Players</h3>
+      <div class="player-list" id="lobby-player-list"></div>
+
+      <div class="mt-3">
+        <div id="lobby-status" class="text-muted text-center mb-2" style="font-size:0.85rem;">
+          Need at least 5 players to start.
+        </div>
+        <button class="btn btn-primary btn-full hidden" id="btn-start">Start Game</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast-container"></div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.4/socket.io.min.js"></script>
+  <script>
+    // ── Socket setup ──────────────────────────────────────────────────────
+    const socket = io();
+
+    let myName     = "";
+    let myRoomCode = "";
+    let mySid      = "";
+
+    // ── Helpers ───────────────────────────────────────────────────────────
+    function showToast(msg, type = "info") {
+      const container = document.getElementById("toast-container");
+      const existing  = container.querySelectorAll(".toast");
+      if (existing.length >= 5) existing[0].remove();
+      const t = document.createElement("div");
+      t.className = `toast ${type}`;
+      t.textContent = msg;
+      container.appendChild(t);
+      const tid = setTimeout(() => t.remove(), 4500);
+      t.addEventListener("click", () => { clearTimeout(tid); t.remove(); });
+    }
+
+    function showScreen(id) {
+      ["screen-landing","screen-lobby"].forEach(s =>
+        document.getElementById(s).classList.toggle("hidden", s !== id)
+      );
+    }
+
+    function initials(name) {
+      return name.split(" ").map(w => w[0]).join("").substring(0,2).toUpperCase();
+    }
+
+    // ── Landing actions ───────────────────────────────────────────────────
+    document.getElementById("btn-create").addEventListener("click", () => {
+      myName = document.getElementById("input-name").value.trim();
+      if (!myName) { showToast("Enter your name first.", "error"); return; }
+      socket.emit("create_room", { name: myName });
+    });
+
+    document.getElementById("btn-join").addEventListener("click", () => {
+      myName = document.getElementById("input-name").value.trim();
+      const code = document.getElementById("input-code").value.trim().toUpperCase();
+      if (!myName) { showToast("Enter your name first.", "error"); return; }
+      if (!code)   { showToast("Enter a room code.", "error"); return; }
+      socket.emit("join_room_request", { name: myName, room_code: code });
+    });
+
+    document.getElementById("input-name").addEventListener("keydown", e => {
+      if (e.key === "Enter") document.getElementById("btn-create").click();
+    });
+    document.getElementById("input-code").addEventListener("keydown", e => {
+      if (e.key === "Enter") document.getElementById("btn-join").click();
+    });
+
+    // ── Socket events ─────────────────────────────────────────────────────
+    socket.on("connect", () => { mySid = socket.id; });
+
+    // Server-push toast notifications (player joined/left, game events, etc.)
+    socket.on("notification", data => {
+      showToast(data.message, data.kind || "info");
+    });
+
+    socket.on("room_created", data => {
+      myRoomCode = data.room_code;
+      document.getElementById("lobby-room-code").textContent = myRoomCode;
+      showScreen("screen-lobby");
+    });
+
+    socket.on("joined_room", data => {
+      myRoomCode = data.room_code;
+      document.getElementById("lobby-room-code").textContent = myRoomCode;
+      showScreen("screen-lobby");
+      if (data.reconnected) showToast("Reconnected to room.", "success");
+    });
+
+    socket.on("game_state", state => {
+      mySid = state.my_sid || socket.id;
+
+      // PREGAME stays on lobby page — players can still join before next game starts
+      // All other active phases redirect to the game page
+      const lobbyPhases = ["lobby", "pregame"];
+      if (!lobbyPhases.includes(state.phase)) {
+        sessionStorage.setItem("avalon_name",     myName || "");
+        sessionStorage.setItem("avalon_room_code", myRoomCode);
+        window.location.href = "/game";
+        return;
+      }
+
+      // Update lobby
+      const players = state.players || [];
+      document.getElementById("lobby-player-count").textContent =
+        `${players.length} / ${state.phase === "pregame" ? 11 : 10}`;
+
+      const list = document.getElementById("lobby-player-list");
+      list.innerHTML = "";
+      players.forEach(p => {
+        const chip = document.createElement("div");
+        chip.className = "player-chip" +
+          (p.sid === mySid      ? " is-me"  : "") +
+          (!p.connected         ? " disconnected" : "");
+
+        let badges = "";
+        if (p.sid === state.host_sid)
+          badges += `<span class="player-badge badge-host">HOST</span>`;
+        if (p.sid === mySid)
+          badges += `<span class="player-badge badge-me">YOU</span>`;
+
+        chip.innerHTML = `
+          <div class="player-avatar">${initials(p.name)}</div>
+          <div class="player-name">${p.name}</div>
+          ${badges}
+        `;
+        list.appendChild(chip);
+      });
+
+      // Host controls
+      const isHost   = (mySid === state.host_sid);
+      const canStart = (players.length >= 5);
+      const startBtn = document.getElementById("btn-start");
+      const status   = document.getElementById("lobby-status");
+
+      startBtn.classList.toggle("hidden", !isHost);
+      startBtn.disabled = !canStart;
+
+      if (!isHost) {
+        status.textContent = "Waiting for host to start the game…";
+      } else if (!canStart) {
+        status.textContent = `Need ${5 - players.length} more player(s) to start.`;
+      } else {
+        status.textContent = `Ready! ${players.length} players connected.`;
+      }
+    });
+
+    socket.on("player_joined", data => {
+      showToast(`${data.name} joined the room.`);
+    });
+
+    socket.on("error", data => {
+      showToast(data.message, "error");
+    });
+
+    // ── Start game ────────────────────────────────────────────────────────
+    document.getElementById("btn-start").addEventListener("click", () => {
+      socket.emit("start_game");
+    });
+
+    // ── Reconnection ──────────────────────────────────────────────────────
+    // If user returns to lobby while a room was in progress, redirect them
+    const storedName = sessionStorage.getItem("avalon_name");
+    const storedRoom = sessionStorage.getItem("avalon_room_code");
+    if (storedName && storedRoom) {
+      document.getElementById("input-name").value = storedName;
+      document.getElementById("input-code").value = storedRoom;
+    }
+  </script>
+</body>
+</html>

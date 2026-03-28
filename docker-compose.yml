@@ -1,0 +1,31 @@
+version: "3.9"
+
+services:
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    # Data survives container restarts (optional but good practice)
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  avalon:
+    build: .
+    ports:
+      - "5000:5000"
+    environment:
+      - SECRET_KEY=change-me-in-production
+      - PORT=5000
+      - REDIS_URL=redis://redis:6379   # remove this line to run without Redis
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  redis_data:
